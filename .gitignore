@@ -3,3 +3,4 @@ secrets.yaml
 .pyc
 .devcontainer
 .vscode
+.last_sync.txt

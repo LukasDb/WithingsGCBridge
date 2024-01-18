@@ -5,9 +5,10 @@ RUN pip install garminconnect pyyaml withings-api
 RUN pip install flask
 
 # copy script file
+COPY ./main.py /app/main.py
 
-# mount volume?
+WORKDIR /app
 
 # set entrypoint
-CMD python
+CMD python main.py
 
