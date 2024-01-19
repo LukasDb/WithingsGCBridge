@@ -20,7 +20,7 @@ import os
 
 UPDATE_INTERVAL = int(os.getenv("UPDATE_INTERVAL", 0))
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("wt_gc_bridge")
 
 app = Flask(__name__)
@@ -36,7 +36,7 @@ class Measurement:
 class WithingsGCBridge:
     SECRETS = Path("secrets.yaml")
     tokenstore = ".tokenstore"
-    withings_callback_uri: str = "http://127.0.0.1:5000"
+    withings_callback_uri: str = "http://127.0.0.1:5681"
     garmin: garminconnect.Garmin
 
     def __init__(self):
@@ -128,12 +128,12 @@ class WithingsGCBridge:
             self.withings_callback_uri = secrets["withings"]["callback_uri"]
 
         parsed_uri = urllib.parse.urlparse(self.withings_callback_uri)
+        logger.debug(f"Redirect URI: {urllib.parse.urlunparse(parsed_uri)}")
 
         auth = withings_api.WithingsAuth(
             client_id=client_id,
             consumer_secret=secret,
             callback_uri=urllib.parse.urlunparse(parsed_uri),
-            mode="demo",
             scope=(
                 withings_api.AuthScope.USER_METRICS,
                 withings_api.AuthScope.USER_INFO,
@@ -160,6 +160,7 @@ class WithingsGCBridge:
 
         authorize_url = auth.get_authorize_url()
 
+        logger.info(f"Redirecting to {authorize_url}")
         webbrowser.open(authorize_url)
 
         auth_code = code_queue.get()
@@ -185,7 +186,11 @@ class WithingsGCBridge:
         ).json()
 
         logger.debug(f"Withings response: {result}")
-        measurements = result["body"]["measuregrps"]
+        try:
+            measurements = result["body"]["measuregrps"]
+        except KeyError:
+            logger.error(f"Could not retrieve measurements from Withings. Response:\n{result}")
+            raise KeyError
 
         def to_measurement(m):
             date = datetime.datetime.fromtimestamp(m["date"])

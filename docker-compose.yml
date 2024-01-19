@@ -1,0 +1,11 @@
+services:
+  withings-gc-bridge:
+    build: .
+    container_name: withings-gc-bridge
+    #restart: unless-stopped
+    environment:
+      - UPDATE_INTERVAL=3600
+    ports:
+      - "5681:5681"
+    volumes:
+      - ".:/app"

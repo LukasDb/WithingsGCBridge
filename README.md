@@ -12,11 +12,11 @@ docker build -t withings-garmin-bridge .
 ## Usage
 Run with
 ```
-docker run -e UPDATE_INTERVAL=0 -v /path/to/config:/app -p 5000:5000 --rm withings-garmin-bridge
+docker run -e UPDATE_INTERVAL=0 -v /path/to/config:/app -p 5681:5681 --rm withings-garmin-bridge
 ```
 - `-e UPDATE_INTERVAL=0`: disables the automatic update. The script will run once and exit. This is useful for testing or initial registering. The interval time is set in seconds.
 - `-v /path/to/config:/app`: /path/to/config should contain the secrets.yaml file as described below and should be writable by the user running the container
-- `-p 5000:5000` The port 5000 is used for the local webserver to receive the OAuth callback from Withings.
+- `-p 5681:5681` The port 5681 is used for the local webserver to receive the OAuth callback from Withings.
 - `--rm` Remove the container after it exits. All persistent data is saved in /path/to/config
 
 ### Behavior
@@ -27,7 +27,7 @@ Only new data since the last sync will be uploaded to Garmin. Therefore, just ru
 1. Create a Withings account, if you don't have one
 2. Create a Withings developer account and login to the developer portal. The company name is not important.
 3. Create an Application with Public API Integration
-4. Target Environment: Development, Name and description are not important. Callback URL: http://127.0.0.1:5000
+4. Target Environment: Development, Name and description are not important. Callback URL: http://127.0.0.1:5681
 5. IMPORTANT: Save the client_id and secret in the secrets.yaml as shown below
 6. When you run the script for the first time, you will be asked to authorize the application. Follow the instructions in the console.
 
@@ -45,5 +45,5 @@ garmin:
 withings:♫
   client_id: <YOUR CLIENT_ID>
   secret: <YOUR SECRET>
-  callback_uri: http://127.0.0.1:5000 # this line is optional
+  callback_uri: http://127.0.0.1:5681 # this line is optional
 ```
