@@ -20,7 +20,8 @@ docker run -e UPDATE_INTERVAL=0 -v /path/to/config:/app -p 5681:5681 --rm within
 - `--rm` Remove the container after it exits. All persistent data is saved in /path/to/config
 
 ### Behavior
-Only new data since the last sync will be uploaded to Garmin. Therefore, just run the program regularly.
+- Only new data since the last sync will be uploaded to Garmin. Therefore, just run the program regularly.
+- When running for the first time, necessay tokens will be requested from Withings and Garmin. The tokens will be saved in the `.tokenstore` folder. It might be useful to generate the keys on your local system and copy the `secrets.yaml`, the `.tokenstore` folder and the `.last_sync.txt` to your server where the container will be running in the long term.
 
 ## Secrets, Keys etc...
 ### Withings

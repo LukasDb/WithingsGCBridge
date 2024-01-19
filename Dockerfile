@@ -10,5 +10,4 @@ COPY ./main.py /app/main.py
 WORKDIR /app
 
 # set entrypoint
-CMD python main.py
-
+ENTRYPOINT [ "python", "main.py"]
