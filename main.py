@@ -15,12 +15,11 @@ import urllib.parse
 import threading, queue
 from flask import Flask, request
 
-import withings_api
 import os
 
 UPDATE_INTERVAL = int(os.getenv("UPDATE_INTERVAL", 0))
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("wt_gc_bridge")
 
 app = Flask(__name__)
@@ -87,7 +86,7 @@ class WithingsGCBridge:
             ) as err:
                 logger.error("Could not login to Garmin Connect")
                 raise err
-
+        logging.debug("Logged into Garmin Connect")
         return garmin
 
     def upload_weights_to_GC(self, measurements: list[Measurement]):
@@ -119,7 +118,7 @@ class WithingsGCBridge:
 
         try:
             client_id = secrets["withings"]["client_id"]
-            secret = secrets["withings"]["secret"]
+            client_secret = secrets["withings"]["secret"]
         except KeyError as err:
             logger.error(f"Could not load secrets.yaml")
             raise err
@@ -128,48 +127,95 @@ class WithingsGCBridge:
             self.withings_callback_uri = secrets["withings"]["callback_uri"]
 
         parsed_uri = urllib.parse.urlparse(self.withings_callback_uri)
-        logger.debug(f"Redirect URI: {urllib.parse.urlunparse(parsed_uri)}")
-
-        auth = withings_api.WithingsAuth(
-            client_id=client_id,
-            consumer_secret=secret,
-            callback_uri=urllib.parse.urlunparse(parsed_uri),
-            scope=(
-                withings_api.AuthScope.USER_METRICS,
-                withings_api.AuthScope.USER_INFO,
-                withings_api.AuthScope.USER_ACTIVITY,
-            ),
-        )
-
-        try:
-            with Path(self.tokenstore).joinpath("withings.json").open("r") as F:
-                access_token = json.load(F)["access_token"]
-
-        except Exception:
-            access_token = self.register_withings(parsed_uri, auth)
-        return access_token
-
-    def register_withings(
-        self, parsed_uri: urllib.parse.ParseResult, auth: withings_api.WithingsAuth
-    ):
-        # start flask
+        logging.debug(f"Running flask endpoint {parsed_uri}")
+        # run flask endpoint
         threading.Thread(
             target=lambda: app.run(debug=False, host=parsed_uri.hostname, port=parsed_uri.port),
             daemon=True,
         ).start()
 
-        authorize_url = auth.get_authorize_url()
+        withings_token_path = Path(self.tokenstore).joinpath("withings.json")
+        if not withings_token_path.exists():
+            logging.info("Running Withings authorization flow")
+            auth_code = self.obtain_authorization_code(parsed_uri, client_id, client_secret)
+            access_token, refresh_token = self.request_access_token(
+                auth_code, client_id, client_secret, parsed_uri
+            )
+        else:
+            with withings_token_path.open() as F:
+                tokens = json.load(F)
+            refresh_token = tokens["refresh_token"]
+            # refresh token
+            access_token, refresh_token = self.request_refresh(
+                refresh_token, client_id, client_secret, parsed_uri
+            )
 
+        with withings_token_path.open("w") as F:
+            json.dump({"refresh_token": refresh_token}, F)
+
+        return access_token
+
+    def obtain_authorization_code(self, parsed_uri, client_id, client_secret):
+        """get auth token from withings (OAuth2; step 1-3)"""
+        scopes = ["user.metrics"]  # or user.info, user.activity
+        redirect_uri = urllib.parse.urlunparse(parsed_uri)
+        state = str(
+            hash(datetime.datetime.now())
+        )  # something random to make sure we get the right response
+        authorize_url = f"https://account.withings.com/oauth2_user/authorize2?response_type=code&client_id={client_id}&scope={','.join(scopes)}&redirect_uri={redirect_uri}&state={state}"
+
+        # 1) redirect user to authorization @withings.com
         logger.info(f"Redirecting to {authorize_url}")
         webbrowser.open(authorize_url)
+        # 2) user authenticates and is redirected to withings_callback_uri
+        # 3) flask retrieves auth code from url
+        logger.debug("Waiting for authorization code")
+        result = code_queue.get(timeout=60)
+        assert result.get("state") == state, "State does not match"
+        logger.debug("Got valid auth code")
+        return result.get("code")
 
-        auth_code = code_queue.get()
-        credentials = auth.get_credentials(auth_code)
+    def request_access_token(self, auth_code, client_id, client_secret, redirect_uri):
+        # now: we use auth token to request an access_token and refresh_token
+        headers = {}
+        payload = {
+            "action": "requesttoken",
+            "grant_type": "authorization_code",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "code": auth_code,
+            "redirect_uri": urllib.parse.urlunparse(redirect_uri),
+        }
+        logger.debug("Requesting access token...")
+        result = requests.get(
+            f"https://wbsapi.withings.net/v2/oauth2", headers=headers, params=payload
+        ).json()['body']
 
-        with Path(self.tokenstore).joinpath("withings.json").open("w") as F:
-            json.dump({"access_token": credentials.access_token}, F)
+        print(f"Got result: {result}")
 
-        return credentials.access_token
+        access_token = result["access_token"]
+        refresh_token = result["refresh_token"]
+        logger.debug("Got access token.")
+        return access_token, refresh_token
+
+    def request_refresh(self, refresh_token, client_id, client_secret, parsed_uri):
+        # use refresh token to get a new refresh token and access token
+        logger.debug("Refreshing token...")
+        headers = {}
+        payload = {
+            "action": "requesttoken",
+            "grant_type": "refresh_token",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "refresh_token": refresh_token,
+        }
+        result = requests.get(
+            f"https://wbsapi.withings.net/v2/oauth2", headers=headers, params=payload
+        ).json()['body']
+        access_token = result["access_token"]
+        refresh_token = result["refresh_token"]
+        logger.debug("Got new access token.")
+        return access_token, refresh_token
 
     def get_weight_from_withings(self) -> list[Measurement]:
         headers = {"Authorization": "Bearer " + self.withings_access_token}
@@ -179,8 +225,7 @@ class WithingsGCBridge:
             "category": 1,
             "lastupdate": int(self.last_sync.timestamp()),
         }
-
-        # List devices of returned user
+        logger.debug("Requesting measurements from Withings...")
         result = requests.get(
             f"https://wbsapi.withings.net/v2/measure", headers=headers, params=payload
         ).json()
@@ -205,16 +250,16 @@ class WithingsGCBridge:
 
     @app.route("/")
     def get_token():
-        code = request.args.get("code")
-        code_queue.put(code)
+        code_queue.put(request.args)
         return "<p>Success!</p>"
 
 
 if __name__ == "__main__":
-    bridge = WithingsGCBridge()
     if UPDATE_INTERVAL > 0:
         while True:
+            bridge = WithingsGCBridge()
             bridge.sync()
             time.sleep(UPDATE_INTERVAL)
     else:
+        bridge = WithingsGCBridge()
         bridge.sync()
