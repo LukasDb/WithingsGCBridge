@@ -18,8 +18,9 @@ from flask import Flask, request
 import os
 
 UPDATE_INTERVAL = int(os.getenv("UPDATE_INTERVAL", 0))
+log_level = os.getenv("LOG_LEVEL", "INFO")
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging._nameToLevel[log_level])
 logger = logging.getLogger("wt_gc_bridge")
 
 app = Flask(__name__)
@@ -189,7 +190,7 @@ class WithingsGCBridge:
         logger.debug("Requesting access token...")
         result = requests.get(
             f"https://wbsapi.withings.net/v2/oauth2", headers=headers, params=payload
-        ).json()['body']
+        ).json()["body"]
 
         print(f"Got result: {result}")
 
@@ -211,7 +212,7 @@ class WithingsGCBridge:
         }
         result = requests.get(
             f"https://wbsapi.withings.net/v2/oauth2", headers=headers, params=payload
-        ).json()['body']
+        ).json()["body"]
         access_token = result["access_token"]
         refresh_token = result["refresh_token"]
         logger.debug("Got new access token.")
