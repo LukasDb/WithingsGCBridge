@@ -1,4 +1,5 @@
 import time
+from typing import Any
 import yaml
 import webbrowser
 import json
@@ -14,6 +15,7 @@ import garminconnect
 import urllib.parse
 import threading, queue
 from flask import Flask, request
+from werkzeug.datastructures import MultiDict
 
 import os
 
@@ -24,7 +26,13 @@ logging.basicConfig(level=logging._nameToLevel[log_level])
 logger = logging.getLogger("wt_gc_bridge")
 
 app = Flask(__name__)
-code_queue = queue.Queue()
+code_queue: queue.Queue[MultiDict] = queue.Queue()
+
+
+@app.route("/")
+def get_token() -> str:
+    code_queue.put(request.args)
+    return "<p>Success!</p>"
 
 
 @dataclass
@@ -39,7 +47,7 @@ class WithingsGCBridge:
     withings_callback_uri: str = "http://127.0.0.1:5681"
     garmin: garminconnect.Garmin
 
-    def __init__(self):
+    def __init__(self) -> None:
         try:
             with self.SECRETS.open() as F:
                 secrets = yaml.safe_load(F)
@@ -68,16 +76,20 @@ class WithingsGCBridge:
             daemon=True,
         ).start()
 
-    def sync(self):
+    def sync(self) -> None:
         garmin = self.init_garmin()
         withings_access_token = self.init_withings()
-        try:
+
+        last_sync_path = Path(".last_sync.txt")
+        if not last_sync_path.exists():
+            logger.info("Could not determine last sync date. Syncing last 7 days.")
+            last_sync = datetime.datetime.now() - datetime.timedelta(days=7)
+        else:
             with open(".last_sync.txt", "r") as F:
-                self.last_sync = datetime.datetime.fromisoformat(F.read())
-        except Exception:
-            self.last_sync = datetime.datetime.now() - datetime.timedelta(days=7)
+                last_sync = datetime.datetime.fromisoformat(F.read().strip())
+
         # 1) get weight with timestamp from withings
-        weights = self.get_weight_from_withings(withings_access_token)
+        weights = self.get_weight_from_withings(withings_access_token, last_sync)
 
         # 2) upload weight to garmin
         if self.upload_weights_to_GC(garmin, weights):
@@ -86,7 +98,7 @@ class WithingsGCBridge:
         else:
             logger.error("Could not upload weights to Garmin Connect")
 
-    def init_garmin(self):
+    def init_garmin(self) -> garminconnect.Garmin:
         try:
             garmin = garminconnect.Garmin()
             garmin.login(self.tokenstore)
@@ -118,7 +130,9 @@ class WithingsGCBridge:
         logging.debug("Logged into Garmin Connect")
         return garmin
 
-    def upload_weights_to_GC(self, garmin, measurements: list[Measurement]) -> bool:
+    def upload_weights_to_GC(
+        self, garmin: garminconnect.Garmin, measurements: list[Measurement]
+    ) -> bool:
         """add weigh in, timestamp"""
         try:
             for measurement in measurements:
@@ -137,7 +151,7 @@ class WithingsGCBridge:
             return False
         return True
 
-    def init_withings(self):
+    def init_withings(self) -> Any:
         withings_token_path = Path(self.tokenstore).joinpath("withings.json")
         if not withings_token_path.exists():
             logging.info("Running Withings authorization flow")
@@ -155,7 +169,7 @@ class WithingsGCBridge:
 
         return access_token
 
-    def obtain_authorization_code(self):
+    def obtain_authorization_code(self) -> Any:
         """get auth token from withings (OAuth2; step 1-3)"""
         scopes = ["user.metrics"]  # or user.info, user.activity
         redirect_uri = urllib.parse.urlunparse(self.parsed_withings_uri)
@@ -173,11 +187,12 @@ class WithingsGCBridge:
         result = code_queue.get(timeout=60)
         assert result.get("state") == state, "State does not match"
         logger.debug("Got valid auth code")
-        return result.get("code")
+        auth_code = result.get("code")
+        assert auth_code is not None, "No auth code in response"
+        return auth_code
 
-    def request_access_token(self, auth_code):
+    def request_access_token(self, auth_code: str) -> Any:
         # now: we use auth token to request an access_token and refresh_token
-        headers = {}
         payload = {
             "action": "requesttoken",
             "grant_type": "authorization_code",
@@ -187,9 +202,9 @@ class WithingsGCBridge:
             "redirect_uri": urllib.parse.urlunparse(self.parsed_withings_uri),
         }
         logger.debug("Requesting access token...")
-        result = requests.get(
-            f"https://wbsapi.withings.net/v2/oauth2", headers=headers, params=payload
-        ).json()["body"]
+        result = requests.get(f"https://wbsapi.withings.net/v2/oauth2", params=payload).json()[
+            "body"
+        ]
 
         print(f"Got result: {result}")
 
@@ -198,10 +213,9 @@ class WithingsGCBridge:
         logger.debug("Got access token.")
         return access_token, refresh_token
 
-    def request_refresh(self, refresh_token):
+    def request_refresh(self, refresh_token: str) -> tuple[str, str]:
         # use refresh token to get a new refresh token and access token
         logger.debug("Refreshing token...")
-        headers = {}
         payload = {
             "action": "requesttoken",
             "grant_type": "refresh_token",
@@ -209,21 +223,23 @@ class WithingsGCBridge:
             "client_secret": self.withings_client_secret,
             "refresh_token": refresh_token,
         }
-        result = requests.get(
-            f"https://wbsapi.withings.net/v2/oauth2", headers=headers, params=payload
-        ).json()["body"]
+        result = requests.get(f"https://wbsapi.withings.net/v2/oauth2", params=payload).json()[
+            "body"
+        ]
         access_token = result["access_token"]
         refresh_token = result["refresh_token"]
         logger.debug("Got new access token.")
         return access_token, refresh_token
 
-    def get_weight_from_withings(self, access_token) -> list[Measurement]:
+    def get_weight_from_withings(
+        self, access_token: str, last_sync: datetime.datetime
+    ) -> list[Measurement]:
         headers = {"Authorization": "Bearer " + access_token}
-        payload = {
+        payload: dict[str, str | int] = {
             "action": "getmeas",
             "meastype": 1,
             "category": 1,
-            "lastupdate": int(self.last_sync.timestamp()),
+            "lastupdate": int(last_sync.timestamp()),
         }
         logger.debug("Requesting measurements from Withings...")
         result = requests.get(
@@ -237,7 +253,7 @@ class WithingsGCBridge:
             logger.error(f"Could not retrieve measurements from Withings. Response:\n{result}")
             raise KeyError
 
-        def to_measurement(m):
+        def to_measurement(m: dict) -> Measurement:
             date = datetime.datetime.fromtimestamp(m["date"])
             raw_measure = m["measures"][0]
             raw_value = raw_measure["value"]
@@ -247,11 +263,6 @@ class WithingsGCBridge:
 
         logger.info(f"Retrieved {len(measurements)} measurements from Withings")
         return [to_measurement(m) for m in measurements]
-
-    @app.route("/")
-    def get_token():
-        code_queue.put(request.args)
-        return "<p>Success!</p>"
 
 
 if __name__ == "__main__":

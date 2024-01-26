@@ -1,8 +1,8 @@
 FROM python:3.10-alpine
 
 # install dependencies
-RUN pip install garminconnect pyyaml
-RUN pip install flask
+COPY ./requirements.txt /app/requirements.txt
+RUN pip install -r /app/requirements.txt
 
 # copy script file
 COPY ./main.py /app/main.py

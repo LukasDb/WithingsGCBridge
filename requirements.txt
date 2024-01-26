@@ -1,0 +1,4 @@
+Flask
+garminconnect
+requests
+pyyaml
