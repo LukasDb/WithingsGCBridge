@@ -138,7 +138,17 @@ class WithingsGCBridge:
             for measurement in measurements:
                 weight = measurement.weight
                 timestamp = measurement.datetime
-                garmin.add_weigh_in(weight=weight, unitKey="kg", timestamp=timestamp.isoformat())
+                timestamp = datetime.datetime(
+                    year=timestamp.year,
+                    month=timestamp.month,
+                    day=timestamp.day,
+                    hour=timestamp.hour,
+                    minute=timestamp.minute,
+                    second=timestamp.second,
+                    microsecond=123456,  # add fake microseconds for garminconnect
+                )
+                time_string = timestamp.isoformat()
+                garmin.add_weigh_in(weight=weight, unitKey="kg", timestamp=time_string)
                 logger.info(f"added {measurement} to Garmin Connect")
         except (
             garminconnect.GarminConnectConnectionError,
