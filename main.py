@@ -20,6 +20,7 @@ from werkzeug.datastructures import MultiDict
 import os
 
 UPDATE_INTERVAL = int(os.getenv("UPDATE_INTERVAL", 0))
+PORT = int(os.getenv("WITHINGS_PORT", 5681))
 log_level = os.getenv("LOG_LEVEL", "INFO")
 
 logging.basicConfig(level=logging._nameToLevel[log_level])
@@ -44,7 +45,7 @@ class Measurement:
 class WithingsGCBridge:
     SECRETS = Path("secrets.yaml")
     tokenstore = ".tokenstore"
-    withings_callback_uri: str = "http://127.0.0.1:5681"
+    withings_callback_uri: str = f"http://127.0.0.1:{PORT}"
     garmin: garminconnect.Garmin
 
     def __init__(self) -> None:

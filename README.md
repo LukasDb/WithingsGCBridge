@@ -19,6 +19,9 @@ docker run -e UPDATE_INTERVAL=0 -v /path/to/config:/app -p 5681:5681 --rm within
 - `-p 5681:5681` The port 5681 is used for the local webserver to receive the OAuth callback from Withings.
 - `--rm` Remove the container after it exits. All persistent data is saved in /path/to/config
 
+### Port Change
+You can change the port with `-e WITHINGS_PORT=<any unusedport>`. Consequently, you have to change the forwarded port, too: `-p <any unusedport>:<any unusedport>` and you have to change the callback URL in the Withings Developer Portal to the changed port.
+
 ### Behavior
 - Only new data since the last sync will be uploaded to Garmin. Therefore, just run the program regularly.
 - When running for the first time, necessay tokens will be requested from Withings and Garmin. The tokens will be saved in the `.tokenstore` folder. It might be useful to generate the keys on your local system and copy the `secrets.yaml`, the `.tokenstore` folder and the `.last_sync.txt` to your server where the container will be running in the long term.
