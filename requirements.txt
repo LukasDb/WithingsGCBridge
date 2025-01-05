@@ -1,6 +1,4 @@
 Flask
-#garminconnect # currently broken?
-# git+https://github.com/cyberjunky/python-garminconnect
-git+https://github.com/cyberjunky/python-garminconnect@4e4e58fb79623baaf2cb72828170946004d53283
+garminconnect
 requests
 pyyaml
