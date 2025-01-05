@@ -81,12 +81,12 @@ class WithingsGCBridge:
         garmin = self.init_garmin()
         withings_access_token = self.init_withings()
 
-        last_sync_path = Path(".last_sync.txt")
+        last_sync_path = Path("/data/.last_sync.txt")
         if not last_sync_path.exists():
             logger.info("Could not determine last sync date. Syncing last 7 days.")
             last_sync = datetime.datetime.now() - datetime.timedelta(days=7)
         else:
-            with open(".last_sync.txt", "r") as F:
+            with last_sync_path.open("r") as F:
                 last_sync = datetime.datetime.fromisoformat(F.read().strip())
 
         # 1) get weight with timestamp from withings
@@ -94,7 +94,7 @@ class WithingsGCBridge:
 
         # 2) upload weight to garmin
         if self.upload_weights_to_GC(garmin, weights):
-            with open(".last_sync.txt", "w") as F:
+            with last_sync_path.open("w") as F:
                 F.write(datetime.datetime.now().isoformat())
         else:
             logger.error("Could not upload weights to Garmin Connect")
