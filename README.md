@@ -12,10 +12,10 @@ docker build -t withings-garmin-bridge .
 ## Usage
 Run with
 ```
-docker run -e UPDATE_INTERVAL=0 -v /path/to/config:/app -p 5681:5681 --rm withings-garmin-bridge
+docker run -e UPDATE_INTERVAL=0 -v /path/to/config:/data -p 5681:5681 --rm withings-garmin-bridge
 ```
 - `-e UPDATE_INTERVAL=0`: disables the automatic update. The script will run once and exit. This is useful for testing or initial registering. The interval time is set in seconds. Additionally, you can set LOG_LEVEL to DEBUG to get more information (default: INFO)
-- `-v /path/to/config:/app`: /path/to/config should contain the secrets.yaml file as described below and should be writable by the user running the container
+- `-v /path/to/config:/data`: /path/to/config should contain the secrets.yaml file as described below and should be writable by the user running the container
 - `-p 5681:5681` The port 5681 is used for the local webserver to receive the OAuth callback from Withings.
 - `--rm` Remove the container after it exits. All persistent data is saved in /path/to/config
 

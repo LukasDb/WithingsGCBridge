@@ -4,6 +4,7 @@ RUN apk update
 RUN apk add git
 
 # install dependencies
+RUN mkdir /app
 COPY ./requirements.txt /app/requirements.txt
 RUN pip install -r /app/requirements.txt
 

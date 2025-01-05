@@ -43,8 +43,8 @@ class Measurement:
 
 
 class WithingsGCBridge:
-    SECRETS = Path("secrets.yaml")
-    tokenstore = ".tokenstore"
+    SECRETS = Path("/data/secrets.yaml")
+    tokenstore = "/data/.tokenstore"
     withings_callback_uri: str = f"http://127.0.0.1:{PORT}"
     garmin: garminconnect.Garmin
 
