@@ -1,5 +1,5 @@
 import time
-from typing import Any
+from typing import Any, Optional
 import yaml
 import webbrowser
 import json
@@ -40,6 +40,8 @@ def get_token() -> str:
 class Measurement:
     datetime: datetime.datetime
     weight: float
+    percent_fat: Optional[float]
+    muscle_mass: Optional[float]
 
 
 class WithingsGCBridge:
@@ -138,6 +140,11 @@ class WithingsGCBridge:
         try:
             for measurement in measurements:
                 weight = measurement.weight
+                if weight is None:
+                  logger.debug(f"Skipping weightless measurement {measurement}")
+                  continue;
+                percent_fat = measurement.percent_fat
+                muscle_mass = measurement.muscle_mass
                 timestamp = measurement.datetime
                 timestamp = datetime.datetime(
                     year=timestamp.year,
@@ -149,7 +156,7 @@ class WithingsGCBridge:
                     microsecond=123456,  # add fake microseconds for garminconnect
                 )
                 time_string = timestamp.isoformat()
-                garmin.add_weigh_in(weight=weight, unitKey="kg", timestamp=time_string)
+                garmin.add_body_composition(weight=weight, percent_fat=percent_fat, muscle_mass=muscle_mass, timestamp=time_string)
                 logger.info(f"added {measurement} to Garmin Connect")
         except (
             garminconnect.GarminConnectConnectionError,
@@ -248,7 +255,7 @@ class WithingsGCBridge:
         headers = {"Authorization": "Bearer " + access_token}
         payload: dict[str, str | int] = {
             "action": "getmeas",
-            "meastype": 1,
+            "meastypes": "1,6,76",
             "category": 1,
             "lastupdate": int(last_sync.timestamp()),
         }
@@ -264,13 +271,15 @@ class WithingsGCBridge:
             logger.error(f"Could not retrieve measurements from Withings. Response:\n{result}")
             raise KeyError
 
-        def to_measurement(m: dict) -> Measurement:
-            date = datetime.datetime.fromtimestamp(m["date"])
-            raw_measure = m["measures"][0]
-            raw_value = raw_measure["value"]
-            raw_unit = raw_measure["unit"]
-            weight = raw_value * 10**raw_unit
-            return Measurement(date, weight)
+        def to_measurement(payload: dict) -> Measurement:
+            def standardize_measure(measure: dict) -> float:
+              raw_measure_value = measure["value"]
+              raw_measure_unit = measure["unit"]
+              return raw_measure_value * 10**raw_measure_unit
+
+            date = datetime.datetime.fromtimestamp(payload["date"])
+            standard_measures_by_type = {m['type']:standardize_measure(m) for m in payload["measures"]}
+            return Measurement(date, standard_measures_by_type.get(1), standard_measures_by_type.get(6), standard_measures_by_type.get(76))
 
         logger.info(f"Retrieved {len(measurements)} measurements from Withings")
         return [to_measurement(m) for m in measurements]
