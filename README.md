@@ -3,6 +3,8 @@ I want to sync my Withings Body Scale with Garmin Connect. However, a direct con
 Therefore, i write this script to sync my weight data to GC from Withings using the respective APIs. This is intended to run in a 
 Docker container and be scheduled to run by the host system.
 
+Now synchronizes body fat and muscle mass, thanks to @ohshazbot!
+
 ## Build
 Build the docker image with
 ```
